@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis Tareas</title>
+
+<!-- PWA: estas 3 líneas permiten instalar la app en el celular -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e3a8a">
+<link rel="apple-touch-icon" href="icono-192.png">
+
+<!-- =====================================================
+     PARTE 2: CSS = EL DISEÑO (colores, tamaños, bordes)
+     ===================================================== -->
+<style>
+/* COLORES: cambia aquí y cambia toda la app */
+:root {
+  --fondo: #eef2f7;
+  --tarjeta: #ffffff;
+  --principal: #1e3a8a;   /* azul de botones y título */
+  --texto: #1f2937;
+  --alta: #dc2626;        /* rojo */
+  --media: #f59e0b;       /* amarillo */
+  --baja: #16a34a;        /* verde */
+}
+
+body { font-family: Arial, sans-serif; background: var(--fondo); color: var(--texto); margin: 0; padding: 16px; }
+.contenedor { max-width: 500px; margin: auto; }
+h1 { text-align: center; color: var(--principal); }
+
+.tarjeta { background: var(--tarjeta); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+
+input, select, textarea, button { width: 100%; padding: 10px; margin-top: 8px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
+button { background: var(--principal); color: white; border: none; cursor: pointer; }
+
+/* Barra de progreso */
+.barra { background: #e2e8f0; border-radius: 10px; height: 14px; margin-top: 8px; overflow: hidden; }
+#relleno { background: var(--baja); height: 100%; width: 0%; }
+
+/* Tareas: el borde izquierdo cambia de color según la prioridad */
+.tarea { border-left: 6px solid var(--media); }
+.tarea.alta { border-left-color: var(--alta); }
+.tarea.baja { border-left-color: var(--baja); }
+.tarea.hecha { opacity: 0.6; }
+.tarea.hecha .titulo { text-decoration: line-through; }
+
+.botones { display: flex; gap: 6px; }
+.botones button { padding: 8px; font-size: 14px; }
+.editar { background: #64748b; }
+.eliminar { background: var(--alta); }
+</style>
+</head>
+
+<body>
+
+<!-- =====================================================
+     PARTE 1: HTML = LA ESTRUCTURA (qué cosas aparecen)
+     ===================================================== -->
+<div class="contenedor">
+
+  <h1>📋 Mis Tareas</h1>
+
+  <!-- Progreso del usuario -->
+  <div class="tarjeta">
+    <b>Nivel <span id="nivel">1</span></b> · <span id="puntos">0</span> puntos
+    <div class="barra"><div id="relleno"></div></div>
+    <small id="faltan"></small>
+    <p id="logros"></p>
+  </div>
+
+  <!-- Formulario para crear tareas -->
+  <div class="tarjeta">
+    <b>Nueva tarea</b>
+    <input id="titulo" placeholder="Título (obligatorio)">
+    <textarea id="descripcion" rows="2" placeholder="Descripción breve"></textarea>
+    <input id="fecha" type="date">
+    <select id="prioridad">
+      <option value="alta">Prioridad alta</option>
+      <option value="media" selected>Prioridad media</option>
+      <option value="baja">Prioridad baja</option>
+    </select>
+    <button onclick="agregarTarea()">Agregar tarea</button>
+    <small id="mensaje"></small>
+  </div>
+
+  <h2>Pendientes</h2>
+  <div id="pendientes"></div>
+
+  <h2>Completadas</h2>
+  <div id="completadas"></div>
+
+</div>
+
+<!-- =====================================================
+     PARTE 3: JAVASCRIPT = LA LÓGICA (lo que hace la app)
+     ===================================================== -->
+<script>
+// ---------- 3.1 CONFIGURACIÓN (lo más fácil de cambiar) ----------
+var PUNTOS = { alta: 30, media: 20, baja: 10 };  // puntos por prioridad
+var PUNTOS_POR_NIVEL = 100;                      // puntos para subir de nivel
+var SONIDO_ACTIVADO = true;                      // true = con sonido, false = sin sonido
+var LOGROS = [                                   // logros: nombre y tareas necesarias
+  { nombre: "🌱 Primera tarea completada", tareas: 1 },
+  { nombre: "⭐ 5 tareas completadas", tareas: 5 },
+  { nombre: "🏆 10 tareas completadas", tareas: 10 }
+];
+
+// ---------- 3.2 DATOS (se guardan en el celular, sin internet) ----------
+var tareas = JSON.parse(localStorage.getItem("tareas") || "[]");
+var puntos = Number(localStorage.getItem("puntos") || 0);
+var hechasTotal = Number(localStorage.getItem("hechas") || 0);
+
+function guardar() {
+  localStorage.setItem("tareas", JSON.stringify(tareas));
+  localStorage.setItem("puntos", puntos);
+  localStorage.setItem("hechas", hechasTotal);
+}
+
+// ---------- 3.3 FUNCIONES DE LAS TAREAS ----------
+function agregarTarea() {
+  var titulo = document.getElementById("titulo").value.trim();
+
+  if (titulo === "") {   // validación: el título es obligatorio
+    document.getElementById("mensaje").textContent = "⚠️ Escribe un título para la tarea";
+    return;
+  }
+
+  tareas.push({
+    id: Date.now(),
+    titulo: titulo,
+    descripcion: document.getElementById("descripcion").value.trim(),
+    fecha: document.getElementById("fecha").value,
+    prioridad: document.getElementById("prioridad").value,
+    hecha: false
+  });
+
+  // limpiar el formulario
+  document.getElementById("titulo").value = "";
+  document.getElementById("descripcion").value = "";
+  document.getElementById("fecha").value = "";
+  document.getElementById("mensaje").textContent = "";
+
+  guardar();
+  mostrar();
+}
+
+function buscarTarea(id) {
+  for (var i = 0; i < tareas.length; i++) {
+    if (tareas[i].id === id) return tareas[i];
+  }
+}
+
+function completarTarea(id) {
+  var t = buscarTarea(id);
+  if (t.hecha) return;              // evita sumar puntos dos veces
+  var nivelAntes = Math.floor(puntos / PUNTOS_POR_NIVEL) + 1;
+  t.hecha = true;
+  puntos = puntos + PUNTOS[t.prioridad];
+  hechasTotal = hechasTotal + 1;
+  var nivelDespues = Math.floor(puntos / PUNTOS_POR_NIVEL) + 1;
+
+  if (nivelDespues > nivelAntes) sonidoSubirNivel();   // subió de nivel
+  else sonidoTareaCompletada();                        // tarea normal
+
+  guardar();
+  mostrar();
+}
+
+function editarTarea(id) {
+  var t = buscarTarea(id);
+  var nuevo = prompt("Nuevo título:", t.titulo);
+  if (nuevo !== null && nuevo.trim() !== "") {
+    t.titulo = nuevo.trim();
+    guardar();
+    mostrar();
+  }
+}
+
+function eliminarTarea(id) {
+  if (!confirm("¿Eliminar esta tarea?")) return;
+  tareas = tareas.filter(function (t) { return t.id !== id; });
+  guardar();
+  mostrar();
+}
+
+// ---------- 3.4 MOSTRAR TODO EN PANTALLA ----------
+function limpiarTexto(texto) {   // evita que el texto escrito rompa la página
+  return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function dibujarTarea(t) {
+  var html = '<div class="tarjeta tarea ' + t.prioridad + (t.hecha ? ' hecha' : '') + '">';
+  html += '<div class="titulo"><b>' + limpiarTexto(t.titulo) + '</b></div>';
+  if (t.descripcion) html += '<div>' + limpiarTexto(t.descripcion) + '</div>';
+  html += '<small>📅 ' + (t.fecha || "Sin fecha") + ' | Prioridad ' + t.prioridad + ' | +' + PUNTOS[t.prioridad] + ' pts</small>';
+  html += '<div class="botones">';
+  if (!t.hecha) {
+    html += '<button onclick="completarTarea(' + t.id + ')">✔ Completar</button>';
+    html += '<button class="editar" onclick="editarTarea(' + t.id + ')">✏️ Editar</button>';
+  }
+  html += '<button class="eliminar" onclick="eliminarTarea(' + t.id + ')">🗑 Eliminar</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function mostrar() {
+  var pendientes = "";
+  var completadas = "";
+
+  for (var i = 0; i < tareas.length; i++) {
+    if (tareas[i].hecha) completadas += dibujarTarea(tareas[i]);
+    else pendientes += dibujarTarea(tareas[i]);
+  }
+
+  document.getElementById("pendientes").innerHTML = pendientes || "<small>No tienes tareas pendientes 🎉</small>";
+  document.getElementById("completadas").innerHTML = completadas || "<small>Aún no completas ninguna tarea</small>";
+
+  // nivel y progreso
+  var nivel = Math.floor(puntos / PUNTOS_POR_NIVEL) + 1;
+  var avance = puntos % PUNTOS_POR_NIVEL;
+  document.getElementById("nivel").textContent = nivel;
+  document.getElementById("puntos").textContent = puntos;
+  document.getElementById("relleno").style.width = (avance / PUNTOS_POR_NIVEL * 100) + "%";
+  document.getElementById("faltan").textContent = "Te faltan " + (PUNTOS_POR_NIVEL - avance) + " puntos para el nivel " + (nivel + 1);
+
+  // logros
+  var textoLogros = "";
+  for (var j = 0; j < LOGROS.length; j++) {
+    textoLogros += (hechasTotal >= LOGROS[j].tareas ? "✅ " : "🔒 ") + LOGROS[j].nombre + "<br>";
+  }
+  document.getElementById("logros").innerHTML = textoLogros;
+}
+
+// ---------- 3.5 SONIDOS (se crean con código: no hay archivos ni internet) ----------
+var audio = null;
+
+// Toca una nota: frecuencia (tono), inicio (segundos de espera) y duración
+function tocarNota(frecuencia, inicio, duracion) {
+  if (!SONIDO_ACTIVADO) return;
+  if (audio === null) audio = new (window.AudioContext || window.webkitAudioContext)();
+
+  var oscilador = audio.createOscillator();
+  var volumen = audio.createGain();
+  var t = audio.currentTime + inicio;
+
+  oscilador.type = "triangle";                  // forma del sonido
+  oscilador.frequency.value = frecuencia;       // más alto = más agudo
+  volumen.gain.setValueAtTime(0.25, t);         // volumen (0 a 1)
+  volumen.gain.exponentialRampToValueAtTime(0.001, t + duracion);  // se apaga suave
+
+  oscilador.connect(volumen);
+  volumen.connect(audio.destination);
+  oscilador.start(t);
+  oscilador.stop(t + duracion);
+}
+
+// Tarea completada: 2 notas cortas (do y sol)
+function sonidoTareaCompletada() {
+  tocarNota(523, 0, 0.15);
+  tocarNota(784, 0.15, 0.3);
+}
+
+// Subir de nivel: melodía más larga y más aguda (más exagerada)
+function sonidoSubirNivel() {
+  tocarNota(523, 0, 0.15);
+  tocarNota(659, 0.15, 0.15);
+  tocarNota(784, 0.30, 0.15);
+  tocarNota(1047, 0.45, 0.15);
+  tocarNota(784, 0.60, 0.15);
+  tocarNota(1047, 0.75, 0.15);
+  tocarNota(1319, 0.90, 0.6);
+}
+
+// Al abrir la app, se dibuja todo
+mostrar();
+</script>
+
+<!-- =====================================================
+     PARTE 4: SERVICE WORKER (hace que funcione sin internet)
+     ===================================================== -->
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+
+</body>
+</html>
