@@ -1,7 +1,7 @@
 // SERVICE WORKER: guarda los archivos en el celular para usar la app sin internet
 
 // Si cambias algo en la app, sube el número (v1 -> v2) para que se actualice
-var VERSION = "tareas-v7";
+var VERSION = "tareas-v8";
 
 // Archivos que se guardan en el celular
 var ARCHIVOS = ["./", "./index.html", "./manifest.json", "./icono-192.png", "./icono-512.png"];
